@@ -13,6 +13,7 @@ app.use('/uploads', express.static('uploads'));
 
 const mongoUrl = "mongodb+srv://aspirianboy7:storedata@cluster0.vhxut.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const JWT_SECRET = "hvdvay6ert72839289()aiyg8t87qt72393293883uhefiuh78ttq3ifi78272jdsds039[]]pou89ywe";
+const port = process.env.PORT || 5021;
 
 mongoose.connect(mongoUrl)
     .then(() => console.log("Database connected"))
@@ -313,5 +314,5 @@ app.delete('/deleteItem/:id', async (req, res) => {
 });
 
 app.listen(5021, () => {
-    console.log("App is running on port 5021");
+    console.log(`Server is running on port ${port}`);
 });
