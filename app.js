@@ -73,18 +73,19 @@ app.post('/uploadImages', upload.array('images'), (req, res) => {
 });
 
 app.post('/storeItem', async (req, res) => {
-    const { name, buyPrice, sellingPrice, discount, showingNumber, categories, id, imageUrls, colors } = req.body;
+    const { name, buyPrice, sellingPrice, discount, showingNumber, categories, id, imageUrls, colors, description } = req.body;
 
     try {
         const newItem = await Item.create({
             name,
             buyPrice,
             sellingPrice,
-            discount, // Store the discount percentage
-            showingNumber, // Store the showing number
+            discount,
+            showingNumber,
             categories,
             imageUrls,
-            colors, // Store colors along with the item
+            colors,
+            description, // Store the description
             createdAt: Date.now(),
         });
 
@@ -300,6 +301,16 @@ app.delete('/deleteOrder/:id', async (req, res) => {
     }
 });
 
+app.delete('/deleteItem/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await Item.findByIdAndDelete(id);
+        res.send({ status: 'ok', message: 'Item deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting item:', error);
+        res.status(500).send({ status: 'error', message: 'Failed to delete item' });
+    }
+});
 
 app.listen(5021, () => {
     console.log("App is running on port 5021");

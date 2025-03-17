@@ -9,6 +9,7 @@ const itemSchema = new mongoose.Schema({
     categories: { type: [String], required: true },
     imageUrls: { type: [String], required: true },
     colors: { type: [String], required: true }, // Add this line
+    description: { type: String},
     createdAt: { type: Date, default: Date.now },
 });
 
