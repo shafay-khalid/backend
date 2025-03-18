@@ -7,6 +7,7 @@ const multer = require("multer");
 const redis = require('redis');
 const sharp = require('sharp');
 const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
@@ -101,6 +102,7 @@ app.post('/storeUser ', async (req, res) => {
     }
 });
 
+// Update the uploadImages route
 app.post('/uploadImages', upload.array('images'), async (req, res) => {
     try {
         const imageUrls = [];
@@ -108,12 +110,23 @@ app.post('/uploadImages', upload.array('images'), async (req, res) => {
         // Process each uploaded file
         for (const file of req.files) {
             const outputFilePath = `./uploads/compressed-${file.filename}`; // Define the output path for the compressed image
+            const ext = path.extname(file.originalname).toLowerCase(); // Get the file extension
 
             // Use sharp to compress and save the image
-            await sharp(file.path)
-                .resize(800) // Resize to a width of 800 pixels (maintaining aspect ratio)
-                .jpeg({ quality: 80 }) // Compress to JPEG format with 80% quality
-                .toFile(outputFilePath); // Save the compressed image
+            const image = sharp(file.path).resize(800); // Resize to a width of 800 pixels (maintaining aspect ratio)
+
+            if (ext === '.jpeg' || ext === '.jpg') {
+                await image.jpeg({ quality: 80 }).toFile(outputFilePath); // Compress to JPEG
+            } else if (ext === '.png') {
+                await image.png({ quality: 80 }).toFile(outputFilePath); // Compress to PNG
+            } else if (ext === '.webp') {
+                await image.webp({ quality: 80 }).toFile(outputFilePath); // Compress to WebP
+            } else if (ext === '.avif') {
+                await image.avif({ quality: 80 }).toFile(outputFilePath); // Compress to AVIF
+            } else {
+                // Handle unsupported formats
+                throw new Error(`Unsupported file format: ${ext}`);
+            }
 
             // Push the URL of the compressed image to the array
             imageUrls.push(`/uploads/compressed-${file.filename}`);
