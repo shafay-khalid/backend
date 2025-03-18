@@ -5,6 +5,8 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const redis = require('redis');
+const sharp = require('sharp');
+const fs = require('fs');
 
 const app = express();
 
@@ -99,9 +101,32 @@ app.post('/storeUser ', async (req, res) => {
     }
 });
 
-app.post('/uploadImages', upload.array('images'), (req, res) => {
-    const imageUrls = req.files.map(file => `/uploads/${file.filename}`);
-    res.send({ status: 'ok', imageUrls });
+app.post('/uploadImages', upload.array('images'), async (req, res) => {
+    try {
+        const imageUrls = [];
+
+        // Process each uploaded file
+        for (const file of req.files) {
+            const outputFilePath = `./uploads/compressed-${file.filename}`; // Define the output path for the compressed image
+
+            // Use sharp to compress and save the image
+            await sharp(file.path)
+                .resize(800) // Resize to a width of 800 pixels (maintaining aspect ratio)
+                .jpeg({ quality: 80 }) // Compress to JPEG format with 80% quality
+                .toFile(outputFilePath); // Save the compressed image
+
+            // Push the URL of the compressed image to the array
+            imageUrls.push(`/uploads/compressed-${file.filename}`);
+
+            // Delete the original uploaded file
+            fs.unlinkSync(file.path);
+        }
+
+        res.send({ status: 'ok', imageUrls });
+    } catch (error) {
+        console.error("Error uploading images:", error);
+        res.status(500).send({ status: 'error', message: 'Failed to upload images' });
+    }
 });
 
 app.post('/storeItem', async (req, res) => {
