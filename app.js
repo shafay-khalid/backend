@@ -42,8 +42,8 @@ const upload = multer({ storage });
 
 // Redis client create karen
 const redisClient = redis.createClient({
-    host: 'localhost',  // Redis server ka host
-    port: 6379,        // Default Redis port
+    host: 'https://backend-production-6ac7.up.railway.app/',  // Redis server ka host
+    port: 5021,        
 });
 
 // Redis client ka connection check karen
