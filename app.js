@@ -4,11 +4,12 @@ const bcrypt = require("bcryptjs");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+const redis = require('redis');
 
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 const mongoUrl = "mongodb+srv://aspirianboy7:storedata@cluster0.vhxut.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -36,24 +37,54 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Redis client create karen
+const redisClient = redis.createClient({
+    host: 'localhost',  // Redis server ka host
+    port: 6379,        // Default Redis port
+});
+
+// Redis client ka connection check karen
+redisClient.on('connect', () => {
+    console.log('Connected to Redis...');
+});
+
+redisClient.on('error', (err) => {
+    console.log('Redis error: ', err);
+});
+
+// Caching Middleware
+const cache = (req, res, next) => {
+    const { userId, category } = req.params;
+    const cacheKey = userId ? userId : category;
+
+    redisClient.get(cacheKey, (err, data) => {
+        if (err) {
+            console.log(err);
+            return next();
+        }
+
+        if (data != null) {
+            return res.json(JSON.parse(data));
+        }
+
+        next();
+    });
+};
+
 app.get("/", (req, res) => {
     res.send({ status: "started" });
 });
 
-
-app.post('/storeUser', async (req, res) => {
+app.post('/storeUser ', async (req, res) => {
     const { fullName, email, uid, role } = req.body;
 
-    // Check if the user already exists
-    const existingUser  = await User.findOne({ email });
-    // console.log(existingUser)
+    const existingUser   = await User.findOne({ email });
     if (existingUser ) {
-        return 
+        return res.status(400).send({ status: 'error', message: 'User  already exists' });
     }
 
     try {
-        // Create a new user in the database
-        const newUser  = await User.create({
+        const newUser   = await User.create({
             name: fullName,
             email,
             uid,
@@ -69,7 +100,7 @@ app.post('/storeUser', async (req, res) => {
 });
 
 app.post('/uploadImages', upload.array('images'), (req, res) => {
-    const imageUrls = req.files.map(file => `/uploads/${file.filename}`); // Adjust the path as needed
+    const imageUrls = req.files.map(file => `/uploads/${file.filename}`);
     res.send({ status: 'ok', imageUrls });
 });
 
@@ -86,7 +117,7 @@ app.post('/storeItem', async (req, res) => {
             categories,
             imageUrls,
             colors,
-            description, // Store the description
+            description,
             createdAt: Date.now(),
         });
 
@@ -97,9 +128,11 @@ app.post('/storeItem', async (req, res) => {
     }
 });
 
-app.get('/getItems', async (req, res) => {
+// Get Items with caching
+app.get('/getItems', cache, async (req, res) => {
     try {
         const items = await Item.find(); // Fetch all items from the database
+        redisClient.setex('allItems', 3600, JSON.stringify(items)); // Cache for 1 hour
         res.send(items);
     } catch (error) {
         console.error("Error fetching items:", error);
@@ -108,13 +141,13 @@ app.get('/getItems', async (req, res) => {
 });
 
 app.get('/getItem/:id', async (req, res) => {
-    const { id } = req.params; // Get the ID from the request parameters
+    const { id } = req.params;
     try {
-        const item = await Item.findById(id); // Use Mongoose to find the item by ID
+        const item = await Item.findById(id);
         if (!item) {
             return res.status(404).send({ status: 'error', message: 'Item not found' });
         }
-        res.send(item); // Send the item details
+        res.send(item);
     } catch (error) {
         console.error("Error fetching item:", error);
         res.status(500).send({ status: 'error', message: error.message });
@@ -123,7 +156,7 @@ app.get('/getItem/:id', async (req, res) => {
 
 // Update Item
 app.put('/updateItem/:id', async (req, res) => {
-    const { id } = req.params; // Get the ID from the request parameters
+    const { id } = req.params;
     const { name, buyPrice, sellingPrice, discount, showingNumber, categories } = req.body;
 
     try {
@@ -134,12 +167,17 @@ app.put('/updateItem/:id', async (req, res) => {
             discount,
             showingNumber,
             categories,
-            updatedAt: Date.now() // Optionally track when the item was updated
-        }, { new: true }); // Return the updated document
+            updatedAt: Date.now()
+        }, { new: true });
 
         if (!updatedItem) {
             return res.status(404).send({ status: 'error', message: 'Item not found' });
         }
+
+        // Clear cache for categories
+        categories.forEach((category) => {
+            redisClient.del(category);
+        });
 
         res.send({ status: 'ok', data: updatedItem });
     } catch (error) {
@@ -160,7 +198,7 @@ app.post('/addToCart', async (req, res) => {
             profit,
             userId,
             selectedColor,
-            imageUrl, // Store the image URL
+            imageUrl,
             createdAt: Date.now(),
         });
 
@@ -171,11 +209,12 @@ app.post('/addToCart', async (req, res) => {
     }
 });
 
-// Get Cart Items
-app.get('/getCartItems/:userId', async (req, res) => {
+// Get Cart Items with caching
+app.get('/getCartItems/:userId', cache, async (req, res) => {
     const { userId } = req.params;
     try {
-        const cartItems = await Cart.find({ userId }).populate('itemId'); // Populate to get item details
+        const cartItems = await Cart.find({ userId }).populate('itemId');
+        redisClient.setex(userId, 3600, JSON.stringify(cartItems)); // Cache for 1 hour
         res.send(cartItems);
     } catch (error) {
         console.error("Error fetching cart items:", error);
@@ -231,7 +270,7 @@ app.post('/addToWishlist', async (req, res) => {
 app.get('/getWishlistItems/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
-        const wishlistItems = await Wishlist.find({ userId }).populate('itemId'); // Populate to get item details
+        const wishlistItems = await Wishlist.find({ userId }).populate('itemId');
         res.send(wishlistItems);
     } catch (error) {
         console.error("Error fetching wishlist items:", error);
@@ -251,11 +290,12 @@ app.delete('/removeFromWishlist/:itemId', async (req, res) => {
     }
 });
 
-
-app.get('/getItemsByCategory/:category', async (req, res) => {
-    const { category } = req.params; // Get the category from the request parameters
+// Get Items by Category with caching
+app.get('/getItemsByCategory/:category', cache, async (req, res) => {
+    const { category } = req.params;
     try {
-        const items = await Item.find({ categories: category }); // Fetch items that match the category
+        const items = await Item.find({ categories: category });
+        redisClient.setex(category, 3600, JSON.stringify(items)); // Cache for 1 hour
         res.send(items);
     } catch (error) {
         console.error("Error fetching items by category:", error);
@@ -263,6 +303,7 @@ app.get('/getItemsByCategory/:category', async (req, res) => {
     }
 });
 
+// Store Order
 app.post('/storeOrder', async (req, res) => {
     const { userId, items, userDetails } = req.body;
 
@@ -281,6 +322,7 @@ app.post('/storeOrder', async (req, res) => {
     }
 });
 
+// Get Orders
 app.get('/getOrders', async (req, res) => {
     try {
         const orders = await Order.find().sort({ createdAt: -1 });
@@ -291,6 +333,7 @@ app.get('/getOrders', async (req, res) => {
     }
 });
 
+// Delete Order
 app.delete('/deleteOrder/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -302,6 +345,7 @@ app.delete('/deleteOrder/:id', async (req, res) => {
     }
 });
 
+// Delete Item
 app.delete('/deleteItem/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -313,6 +357,6 @@ app.delete('/deleteItem/:id', async (req, res) => {
     }
 });
 
-app.listen(5021, () => {
+app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
